@@ -1,14 +1,18 @@
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const path = require('path');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-const { createClient, commandOptions } = require('redis');
-require('dotenv').config({ path: '../.env' });
+const { createClient } = require('redis');
+require('dotenv').config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from the React app
+app.use(express.static(path.join(__dirname, '../client/dist')));
 
 const server = http.createServer(app);
 
@@ -57,7 +61,6 @@ async function updateVoteCount(pollId, option) {
     await redisClient.hIncrBy(`poll:${pollId}:votes`, option, 1);
     const rawVotes = await redisClient.hGetAll(`poll:${pollId}:votes`);
 
-    // ENSURE NUMBERS FOR THE FRONTEND CHART
     const numericVotes = {};
     Object.keys(rawVotes).forEach(key => {
         numericVotes[key] = Number(rawVotes[key]);
@@ -79,15 +82,13 @@ function broadcast(pollId, data) {
 // --- STREAM CONSUMER ---
 
 async function startStreamConsumer() {
-    console.log('📡 [KAFKA] Initializing High-Throughput Broker...');
+    console.log('📡 [LIVE] Initializing Secure Data System...');
     try {
         if (!redisClient.isOpen) await redisClient.connect();
 
         try {
             await redisClient.xGroupCreate(STREAM_KEY, GROUP_NAME, '$', { MKSTREAM: true });
         } catch (e) { }
-
-        console.log(`⚡ [KAFKA] Consumer Group [${GROUP_NAME}] is active.`);
 
         while (true) {
             try {
@@ -103,14 +104,11 @@ async function startStreamConsumer() {
                     const event = JSON.parse(message.message.payload);
                     const updatedVotes = await updateVoteCount(event.pollId, event.option);
 
-                    console.log(`🔥 [EVENT] Detected Real-time Vote: ${event.option}`);
-
                     broadcast(event.pollId, {
                         type: 'VOTE_EVENT',
                         metadata: {
                             id: message.id,
                             timestamp: Date.now(),
-                            engine: 'Redis Stream'
                         },
                         payload: event,
                         totalVotes: Object.values(updatedVotes).reduce((a, b) => a + b, 0),
@@ -124,14 +122,13 @@ async function startStreamConsumer() {
             }
         }
     } catch (e) {
-        console.error('❌ [STREAM] CRITICAL FAILURE:', e.message);
+        console.error('❌ [SERVER] CRITICAL FAILURE:', e.message);
     }
 }
 
 // --- WS HANDLER ---
 
 wss.on('connection', (ws, req) => {
-    // Correctly parse query params from request URL
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pollId = url.searchParams.get('pollId');
     const role = url.searchParams.get('role');
@@ -146,8 +143,6 @@ wss.on('connection', (ws, req) => {
         const pollClients = clients.get(pollId);
         if (pollClients) pollClients.delete(clientRecord);
     });
-
-    console.log(`🔌 [WS] ${role} connected to ${pollId}`);
 });
 
 // --- API ---
@@ -198,7 +193,12 @@ app.post('/api/polls/:pollId/release', async (req, res) => {
     res.json({ success: true });
 });
 
-const PORT = 5000;
+// Final catch-all route for React
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+});
+
+const PORT = process.env.PORT || 5000;
 server.listen(PORT, async () => {
     console.log(`🚀 [SERVER] RUNNING ON PORT ${PORT}`);
     if (!redisClient.isOpen) await redisClient.connect();
