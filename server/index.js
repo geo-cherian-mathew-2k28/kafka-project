@@ -18,14 +18,30 @@ const server = http.createServer(app);
 
 // --- CONFIG ---
 const REDIS_URL = process.env.REDIS_URL;
+
+if (!REDIS_URL) {
+    console.error('❌ [CRITICAL] REDIS_URL is not defined in environment variables.');
+    console.log('💡 TIP: Check your Railway dashboard under the "Variables" tab of your service.');
+} else {
+    // Masked logging for security
+    const maskedUrl = REDIS_URL.replace(/:[^:@]+@/, ':****@');
+    console.log(`🔌 [REDIS] Attempting connection to: ${maskedUrl}`);
+}
+
 const STREAM_KEY = 'gvote-votes-stream';
 const GROUP_NAME = `group-${uuidv4().substring(0, 4)}`;
 const CONSUMER_NAME = 'processor-1';
 
 const redisClient = createClient({
-    url: REDIS_URL,
+    url: REDIS_URL || 'redis://localhost:6379',
     socket: {
-        reconnectStrategy: (retries) => Math.min(retries * 50, 2000)
+        reconnectStrategy: (retries) => {
+            if (retries > 10) {
+                console.error('❌ [REDIS] Max reconnection attempts reached. Check your credentials.');
+                return new Error('Max retries');
+            }
+            return Math.min(retries * 100, 3000);
+        }
     }
 });
 
