@@ -147,7 +147,7 @@ const OwnerDashboard = () => {
     const handleRelease = async () => {
         setReleasing(true);
         await fetch(`/api/polls/${pollId}/release`, { method: 'POST' });
-        setPoll(prev => ({ ...prev, status: 'PUBLISHED' }));
+        setPoll(prev => ({ ...prev, status: 'CLOSED' }));
         setReleasing(false);
         confetti({
             particleCount: 250,
@@ -279,7 +279,15 @@ const VoterPage = () => {
     const [results, setResults] = useState(null);
 
     useEffect(() => {
-        fetch(`/api/polls/${pollId}`).then(res => res.json()).then(setPoll);
+        fetch(`/api/polls/${pollId}`)
+            .then(res => res.json())
+            .then(data => {
+                setPoll(data);
+                // If poll is already closed when joining
+                if (data.status === 'CLOSED') {
+                    setResults(data.votes);
+                }
+            });
 
         const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const wsHost = window.location.hostname === 'localhost' ? 'localhost:5000' : window.location.host;
@@ -301,7 +309,7 @@ const VoterPage = () => {
 
     const handleVote = async (option) => {
         // Senior Logic: Atomic ref check to prevent double-click race conditions
-        if (hasVotedRef.current) return;
+        if (hasVotedRef.current || (poll && poll.status !== 'ACTIVE')) return;
         hasVotedRef.current = true;
 
         // Optimistic UI: Update state immediately for <200ms response feel
@@ -309,15 +317,19 @@ const VoterPage = () => {
         setVoted(true);
 
         // Performance: Non-blocking fetch
-        fetch(`/api/polls/${pollId}/vote`, {
+        const res = await fetch(`/api/polls/${pollId}/vote`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ option })
-        }).catch(err => {
-            // Revert on failure (rare in prod)
+        });
+
+        if (!res.ok) {
+            // If voting was closed in the meantime
             hasVotedRef.current = false;
             setVoted(false);
-        });
+            const data = await res.json();
+            alert(data.error || 'Voting failed');
+        }
     };
 
     if (!poll) return (

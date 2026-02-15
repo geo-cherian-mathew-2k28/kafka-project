@@ -190,6 +190,12 @@ app.get('/api/polls/:pollId', async (req, res) => {
 app.post('/api/polls/:pollId/vote', async (req, res) => {
     const { pollId } = req.params;
     const { option } = req.body;
+
+    const poll = await getPoll(pollId);
+    if (!poll || poll.status !== 'ACTIVE') {
+        return res.status(403).json({ error: 'Voting is closed for this poll.' });
+    }
+
     await redisClient.xAdd(STREAM_KEY, '*', {
         payload: JSON.stringify({ pollId, option })
     });
@@ -200,7 +206,7 @@ app.post('/api/polls/:pollId/release', async (req, res) => {
     const pollId = req.params.pollId;
     const poll = await getPoll(pollId);
     if (!poll) return res.status(404).json({ error: 'Not found' });
-    poll.status = 'RESULT_RELEASED';
+    poll.status = 'CLOSED';
     await savePoll(pollId, poll);
     const rawVotes = await redisClient.hGetAll(`poll:${pollId}:votes`) || {};
     const votes = {};
