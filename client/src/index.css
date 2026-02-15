@@ -9,8 +9,15 @@
   --card-bg: rgba(15, 23, 42, 0.7);
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --glass-reflection: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-reflection: rgba(255, 255, 255, 0.02);
+}
+
+textarea,
+input,
+button,
+select {
+  -webkit-tap-highlight-color: transparent;
 }
 
 * {
@@ -496,6 +503,28 @@ h2 {
 .btn-primary:hover {
   transform: translateY(-2px);
   filter: brightness(1.1);
+  box-shadow: 0 15px 30px -5px rgba(192, 132, 252, 0.6);
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+}
+
+input {
+  outline: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+input:focus {
+  border-color: var(--primary) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 0 20px rgba(192, 132, 252, 0.15), inset 0 0 10px rgba(255, 255, 255, 0.02) !important;
+}
+
+input::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+  font-weight: 400;
 }
 
 .option-card {

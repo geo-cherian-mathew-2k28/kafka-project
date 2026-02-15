@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, useParams, useNavigate, Link } from 'react-router-dom';
 import {
     Share2, Plus, ArrowRight, CheckCircle2, Copy, Activity,
@@ -76,29 +76,30 @@ const CreatePoll = () => {
 
                 <div className="space-y-8">
                     <div className="group">
-                        <label className="text-[10px] font-black text-muted uppercase tracking-[0.3em] mb-3 block group-focus-within:text-primary transition-colors">Your Question</label>
+                        <label className="text-[10px] font-black text-muted uppercase tracking-[0.3em] mb-4 block group-focus-within:text-primary transition-colors">Your Question</label>
                         <input
-                            placeholder="What would you like to ask?"
-                            className="w-full bg-white/5 border border-white/10 rounded-xl p-5 text-lg font-bold focus:outline-none focus:border-primary transition-all focus:bg-white/[0.08]"
+                            placeholder="e.g., What should we have for lunch?"
+                            className="w-full bg-white/5 border-white/10 rounded-2xl p-6 text-xl font-bold transition-all"
                             onChange={e => setQuestion(e.target.value)}
                         />
                     </div>
 
                     <div>
-                        <label className="text-[10px] font-black text-muted uppercase tracking-[0.3em] mb-3 block">Your Choices</label>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label className="text-[10px] font-black text-muted uppercase tracking-[0.3em] mb-4 block">Poll Choices</label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {options.map((opt, i) => (
-                                <motion.div key={i} layout>
+                                <motion.div key={i} layout className="relative">
                                     <input
                                         placeholder={`Choice ${i + 1}`}
-                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 focus:outline-none focus:border-secondary transition-all"
+                                        className="w-full bg-white/5 border-white/10 rounded-2xl px-6 py-5 font-bold transition-all"
                                         value={opt}
                                         onChange={e => updateOption(i, e.target.value)}
                                     />
                                 </motion.div>
                             ))}
-                            <button onClick={addOption} className="option-card border-dashed flex justify-center gap-2 py-4">
-                                <Plus size={18} className="text-secondary" /> Add Choice
+                            <button onClick={addOption} className="option-card border-dashed border-white/10 flex justify-center items-center gap-3 py-5 hover:bg-white/[0.05] transition-all">
+                                <Plus size={20} className="text-secondary" />
+                                <span className="text-[10px] font-black uppercase tracking-widest">Add Choice</span>
                             </button>
                         </div>
                     </div>
@@ -273,6 +274,7 @@ const VoterPage = () => {
     const { pollId } = useParams();
     const [poll, setPoll] = useState(null);
     const [voted, setVoted] = useState(false);
+    const hasVotedRef = useRef(false);
     const [selectedOption, setSelectedOption] = useState(null);
     const [results, setResults] = useState(null);
 
@@ -298,13 +300,23 @@ const VoterPage = () => {
     }, [pollId]);
 
     const handleVote = async (option) => {
-        if (voted) return;
+        // Senior Logic: Atomic ref check to prevent double-click race conditions
+        if (hasVotedRef.current) return;
+        hasVotedRef.current = true;
+
+        // Optimistic UI: Update state immediately for <200ms response feel
         setSelectedOption(option);
         setVoted(true);
-        await fetch(`/api/polls/${pollId}/vote`, {
+
+        // Performance: Non-blocking fetch
+        fetch(`/api/polls/${pollId}/vote`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ option })
+        }).catch(err => {
+            // Revert on failure (rare in prod)
+            hasVotedRef.current = false;
+            setVoted(false);
         });
     };
 
