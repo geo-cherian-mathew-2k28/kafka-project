@@ -20,35 +20,25 @@ const server = http.createServer(app);
 const REDIS_URL = process.env.REDIS_URL;
 
 if (!REDIS_URL) {
-    console.error('❌ [CRITICAL] REDIS_URL is not defined in environment variables.');
-    console.log('💡 TIP: Check your Railway dashboard under the "Variables" tab of your service.');
-} else {
-    // Masked logging for security
-    const maskedUrl = REDIS_URL.replace(/:[^:@]+@/, ':****@');
-    console.log(`🔌 [REDIS] Attempting connection to: ${maskedUrl}`);
+    console.error('❌ [CRITICAL] REDIS_URL is not defined.');
 }
 
 const STREAM_KEY = 'gvote-votes-stream';
-const GROUP_NAME = 'gvote-consumer-group-main';
-const CONSUMER_NAME = `processor-${uuidv4().substring(0, 4)}`;
+// Using a consistent group name so only one server instance processes each vote
+const GROUP_NAME = 'gvote-global-consumer-group';
+const CONSUMER_ID = `node-${uuidv4().substring(0, 4)}`;
+const PUB_SUB_CHANNEL = 'poll-updates';
 
-const redisClient = createClient({
-    url: REDIS_URL || 'redis://localhost:6379',
-    socket: {
-        reconnectStrategy: (retries) => {
-            if (retries > 10) {
-                console.error('❌ [REDIS] Max reconnection attempts reached. Check your credentials.');
-                return new Error('Max retries');
-            }
-            return Math.min(retries * 100, 3000);
-        }
-    }
-});
+// Main client for state/streams
+const redisClient = createClient({ url: REDIS_URL || 'redis://localhost:6379' });
+// Dedicated client for Pub/Sub subscriptions
+const subscriber = createClient({ url: REDIS_URL || 'redis://localhost:6379' });
+// Dedicated client for Publishing
+const publisher = createClient({ url: REDIS_URL || 'redis://localhost:6379' });
 
 // Create WebSocket server
 const wss = new WebSocket.Server({ noServer: true });
 
-// Attach WS to HTTP server manually for better control
 server.on('upgrade', (request, socket, head) => {
     if (request.url.startsWith('/ws')) {
         wss.handleUpgrade(request, socket, head, (ws) => {
@@ -59,8 +49,36 @@ server.on('upgrade', (request, socket, head) => {
     }
 });
 
-// WebSocket clients: pollId -> Set of { ws, role }
+// WebSocket clients: pollId -> Set of ws
 const clients = new Map();
+
+// --- REDIS PUB/SUB BRIDGE ---
+async function startPubSub() {
+    await subscriber.connect();
+    await publisher.connect();
+
+    console.log('🔗 [PUBSUB] Real-time synchronization active');
+
+    await subscriber.subscribe(PUB_SUB_CHANNEL, (message) => {
+        const { pollId, data } = JSON.parse(message);
+        broadcastLocal(pollId, data);
+    });
+}
+
+function broadcastLocal(pollId, data) {
+    const pollClients = clients.get(pollId);
+    if (pollClients) {
+        pollClients.forEach(ws => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(data));
+            }
+        });
+    }
+}
+
+async function publishUpdate(pollId, data) {
+    await publisher.publish(PUB_SUB_CHANNEL, JSON.stringify({ pollId, data }));
+}
 
 // --- HELPERS ---
 
@@ -76,93 +94,68 @@ async function savePoll(pollId, pollData) {
 async function updateVoteCount(pollId, option) {
     await redisClient.hIncrBy(`poll:${pollId}:votes`, option, 1);
     const rawVotes = await redisClient.hGetAll(`poll:${pollId}:votes`);
-
     const numericVotes = {};
-    Object.keys(rawVotes).forEach(key => {
-        numericVotes[key] = Number(rawVotes[key]);
-    });
+    Object.keys(rawVotes).forEach(key => numericVotes[key] = Number(rawVotes[key]));
     return numericVotes;
 }
 
-function broadcast(pollId, data) {
-    const pollClients = clients.get(pollId);
-    if (pollClients) {
-        pollClients.forEach(client => {
-            if (client.ws.readyState === WebSocket.OPEN) {
-                client.ws.send(JSON.stringify(data));
-            }
-        });
-    }
-}
-
-// --- STREAM CONSUMER ---
-
+// --- STREAM CONSUMER (Worker) ---
 async function startStreamConsumer() {
-    console.log('📡 [LIVE] Initializing Secure Data System...');
     try {
         if (!redisClient.isOpen) await redisClient.connect();
-
         try {
             await redisClient.xGroupCreate(STREAM_KEY, GROUP_NAME, '$', { MKSTREAM: true });
         } catch (e) { }
 
         while (true) {
-            try {
-                const response = await redisClient.xReadGroup(
-                    GROUP_NAME,
-                    CONSUMER_NAME,
-                    [{ key: STREAM_KEY, id: '>' }],
-                    { COUNT: 1, BLOCK: 2000 }
-                );
+            const response = await redisClient.xReadGroup(
+                GROUP_NAME, CONSUMER_ID,
+                [{ key: STREAM_KEY, id: '>' }],
+                { COUNT: 1, BLOCK: 2000 }
+            );
 
-                if (response && response.length > 0) {
-                    const message = response[0].messages[0];
-                    const event = JSON.parse(message.message.payload);
-                    const updatedVotes = await updateVoteCount(event.pollId, event.option);
+            if (response && response.length > 0) {
+                const message = response[0].messages[0];
+                const event = JSON.parse(message.message.payload);
+                const updatedVotes = await updateVoteCount(event.pollId, event.option);
 
-                    broadcast(event.pollId, {
-                        type: 'VOTE_EVENT',
-                        metadata: {
-                            id: message.id,
-                            timestamp: Date.now(),
-                        },
-                        payload: event,
-                        totalVotes: Object.values(updatedVotes).reduce((a, b) => a + b, 0),
-                        votes: updatedVotes
-                    });
+                // Publish update to ALL server instances via Pub/Sub
+                await publishUpdate(event.pollId, {
+                    type: 'VOTE_EVENT',
+                    metadata: { id: message.id, timestamp: Date.now() },
+                    payload: event,
+                    totalVotes: Object.values(updatedVotes).reduce((a, b) => a + b, 0),
+                    votes: updatedVotes
+                });
 
-                    await redisClient.xAck(STREAM_KEY, GROUP_NAME, message.id);
-                }
-            } catch (err) {
-                await new Promise(r => setTimeout(r, 1000));
+                await redisClient.xAck(STREAM_KEY, GROUP_NAME, message.id);
             }
         }
     } catch (e) {
-        console.error('❌ [SERVER] CRITICAL FAILURE:', e.message);
+        console.error('❌ [STREAM] Processor Error:', e.message);
+        setTimeout(startStreamConsumer, 5000);
     }
 }
 
 // --- WS HANDLER ---
-
 wss.on('connection', (ws, req) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pollId = url.searchParams.get('pollId');
-    const role = url.searchParams.get('role');
-
     if (!pollId) return ws.terminate();
 
     if (!clients.has(pollId)) clients.set(pollId, new Set());
-    const clientRecord = { ws, role };
-    clients.get(pollId).add(clientRecord);
+    clients.get(pollId).add(ws);
 
     ws.on('close', () => {
         const pollClients = clients.get(pollId);
-        if (pollClients) pollClients.delete(clientRecord);
+        if (pollClients) {
+            pollClients.delete(ws);
+            if (pollClients.size === 0) clients.delete(pollId);
+        }
     });
 });
 
 // --- API ---
-
 app.post('/api/polls', async (req, res) => {
     const { question, options } = req.body;
     const pollId = uuidv4().substring(0, 8);
@@ -175,11 +168,9 @@ app.get('/api/polls/:pollId', async (req, res) => {
     const pollId = req.params.pollId;
     const poll = await getPoll(pollId);
     if (!poll) return res.status(404).json({ error: 'Not found' });
-
     const rawVotes = await redisClient.hGetAll(`poll:${pollId}:votes`) || {};
     const pollVotes = {};
     Object.keys(rawVotes).forEach(k => pollVotes[k] = Number(rawVotes[k]));
-
     res.json({
         ...poll,
         votes: pollVotes,
@@ -190,15 +181,9 @@ app.get('/api/polls/:pollId', async (req, res) => {
 app.post('/api/polls/:pollId/vote', async (req, res) => {
     const { pollId } = req.params;
     const { option } = req.body;
-
     const poll = await getPoll(pollId);
-    if (!poll || poll.status !== 'ACTIVE') {
-        return res.status(403).json({ error: 'Voting is closed for this poll.' });
-    }
-
-    await redisClient.xAdd(STREAM_KEY, '*', {
-        payload: JSON.stringify({ pollId, option })
-    });
+    if (!poll || poll.status !== 'ACTIVE') return res.status(403).json({ error: 'Poll closed' });
+    await redisClient.xAdd(STREAM_KEY, '*', { payload: JSON.stringify({ pollId, option }) });
     res.json({ success: true });
 });
 
@@ -211,20 +196,17 @@ app.post('/api/polls/:pollId/release', async (req, res) => {
     const rawVotes = await redisClient.hGetAll(`poll:${pollId}:votes`) || {};
     const votes = {};
     Object.keys(rawVotes).forEach(k => votes[k] = Number(rawVotes[k]));
-    broadcast(pollId, { type: 'RESULTS_RELEASED', votes });
+    await publishUpdate(pollId, { type: 'RESULTS_RELEASED', votes });
     res.json({ success: true });
 });
 
-// Final catch-all route for React
-// Senior Engineer Note: Using a Regex literal (/.*/) bypasses the path-to-regexp parser 
-// which is causing 'Missing parameter name' errors in Express 5.
-app.get(/.*/, (req, res) => {
+app.get('/:path*', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, async () => {
-    console.log(`🚀 [SERVER] RUNNING ON PORT ${PORT}`);
-    if (!redisClient.isOpen) await redisClient.connect();
+    console.log(`🚀 [SERVER] PORT ${PORT}`);
+    await startPubSub();
     startStreamConsumer();
 });

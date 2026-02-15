@@ -513,13 +513,15 @@ h2 {
 input {
   outline: none !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: white !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 input:focus {
   border-color: var(--primary) !important;
   background: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 0 20px rgba(192, 132, 252, 0.15), inset 0 0 10px rgba(255, 255, 255, 0.02) !important;
+  box-shadow: 0 0 0 4px rgba(192, 132, 252, 0.1), inset 0 0 10px rgba(255, 255, 255, 0.02) !important;
 }
 
 input::placeholder {
