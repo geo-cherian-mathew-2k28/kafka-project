@@ -138,7 +138,19 @@ async function startStreamConsumer() {
 }
 
 // --- WS HANDLER ---
+// WebSocket heartbeats to keep cloud connections hot
+const interval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) return ws.terminate();
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 30000);
+
 wss.on('connection', (ws, req) => {
+    ws.isAlive = true;
+    ws.on('pong', () => ws.isAlive = true);
+
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pollId = url.searchParams.get('pollId');
     if (!pollId) return ws.terminate();
@@ -154,6 +166,8 @@ wss.on('connection', (ws, req) => {
         }
     });
 });
+
+wss.on('close', () => clearInterval(interval));
 
 // --- API ---
 app.post('/api/polls', async (req, res) => {
