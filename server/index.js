@@ -194,7 +194,9 @@ app.post('/api/polls/:pollId/release', async (req, res) => {
 });
 
 // Final catch-all route for React
-app.get('/:path*', (req, res) => {
+// Senior Engineer Note: Using a Regex literal (/.*/) bypasses the path-to-regexp parser 
+// which is causing 'Missing parameter name' errors in Express 5.
+app.get(/.*/, (req, res) => {
     res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
 
