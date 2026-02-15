@@ -29,8 +29,8 @@ if (!REDIS_URL) {
 }
 
 const STREAM_KEY = 'gvote-votes-stream';
-const GROUP_NAME = `group-${uuidv4().substring(0, 4)}`;
-const CONSUMER_NAME = 'processor-1';
+const GROUP_NAME = 'gvote-consumer-group-main';
+const CONSUMER_NAME = `processor-${uuidv4().substring(0, 4)}`;
 
 const redisClient = createClient({
     url: REDIS_URL || 'redis://localhost:6379',

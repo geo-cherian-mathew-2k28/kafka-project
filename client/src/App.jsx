@@ -67,51 +67,66 @@ const CreatePoll = () => {
     };
 
     return (
-        <div className="container max-w-3xl">
-            <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="glass-card mt-12 bg-gradient-to-br from-[#0f172a] to-[#020617]">
-                <div className="flex items-center gap-3 mb-10 opacity-60 uppercase font-black tracking-[0.4em] text-[10px]">
-                    <Terminal size={14} className="text-primary" /> Setup Your Poll
+        <div className="container max-w-4xl pt-12">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-16">
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 rounded-full text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-6">
+                    <span className="w-2 h-2 bg-primary rounded-full animate-pulse" /> Live & Real-time
                 </div>
-                <h1 className="text-left mb-8">Start a <span className="gradient-text">Live Poll</span> and get instant results</h1>
+                <h1 className="text-6xl font-black mb-6 tracking-tighter leading-none"><span className="gradient-text">Instant Data</span> Voting</h1>
+                <p className="text-muted text-sm font-medium tracking-wide uppercase opacity-60">Deploy a high-throughput polling engine in seconds</p>
+            </motion.div>
 
-                <div className="space-y-8">
-                    <div className="group">
-                        <label className="text-[10px] font-black text-muted uppercase tracking-[0.3em] mb-4 block group-focus-within:text-primary transition-colors">Your Question</label>
-                        <input
-                            placeholder="e.g., What should we have for lunch?"
-                            className="w-full bg-white/5 border-white/10 rounded-2xl p-6 text-xl font-bold transition-all"
-                            onChange={e => setQuestion(e.target.value)}
-                        />
+            <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="glass-card bg-gradient-to-br from-[#0f172a] to-[#020617] relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-8 opacity-10">
+                    <Database size={120} />
+                </div>
+
+                <div className="relative z-10">
+                    <div className="flex items-center gap-3 mb-12 pb-6 border-b border-white/5 opacity-60 uppercase font-black tracking-[0.4em] text-[10px]">
+                        <Terminal size={14} className="text-primary" /> System Configuration
                     </div>
 
-                    <div>
-                        <label className="text-[10px] font-black text-muted uppercase tracking-[0.3em] mb-4 block">Poll Choices</label>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {options.map((opt, i) => (
-                                <motion.div key={i} layout className="relative">
-                                    <input
-                                        placeholder={`Choice ${i + 1}`}
-                                        className="w-full bg-white/5 border-white/10 rounded-2xl px-6 py-5 font-bold transition-all"
-                                        value={opt}
-                                        onChange={e => updateOption(i, e.target.value)}
-                                    />
-                                </motion.div>
-                            ))}
-                            <button onClick={addOption} className="option-card border-dashed border-white/10 flex justify-center items-center gap-3 py-5 hover:bg-white/[0.05] transition-all">
-                                <Plus size={20} className="text-secondary" />
-                                <span className="text-[10px] font-black uppercase tracking-widest">Add Choice</span>
+                    <div className="space-y-10">
+                        <div className="group">
+                            <label className="text-[10px] font-black text-muted uppercase tracking-[0.3em] mb-4 block group-focus-within:text-primary transition-colors">Poll Question</label>
+                            <input
+                                placeholder="What's on your mind?"
+                                className="w-full bg-white/5 border-white/10 rounded-2xl p-6 text-2xl font-black tracking-tight transition-all placeholder:opacity-20"
+                                onChange={e => setQuestion(e.target.value)}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-[10px] font-black text-muted uppercase tracking-[0.3em] mb-4 block">Event Options</label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {options.map((opt, i) => (
+                                    <motion.div key={i} layout className="relative">
+                                        <input
+                                            placeholder={`Option ${i + 1}`}
+                                            className="w-full bg-white/5 border-white/10 rounded-2xl px-6 py-5 font-bold transition-all placeholder:opacity-20"
+                                            value={opt}
+                                            onChange={e => updateOption(i, e.target.value)}
+                                        />
+                                    </motion.div>
+                                ))}
+                                <button onClick={addOption} className="option-card border-dashed border-white/10 flex justify-center items-center gap-3 py-5 hover:bg-white/[0.05] transition-all bg-white/[0.02]">
+                                    <Plus size={20} className="text-secondary" />
+                                    <span className="text-[10px] font-black uppercase tracking-widest">Append Option</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="pt-6">
+                            <button
+                                onClick={handleCreate}
+                                disabled={loading || !question}
+                                className="btn btn-primary w-full py-6 text-lg flex items-center justify-center gap-4 disabled:opacity-50 disabled:cursor-not-allowed group shadow-2xl"
+                            >
+                                {loading ? 'DEPLOYING ENGINE...' : 'INITIALIZE LIVE POLL'}
+                                <ArrowRight size={22} className="group-hover:translate-x-1 transition-transform" />
                             </button>
                         </div>
                     </div>
-
-                    <button
-                        onClick={handleCreate}
-                        disabled={loading || !question}
-                        className="btn btn-primary w-full py-5 text-lg flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed group"
-                    >
-                        {loading ? 'Launching...' : 'START YOUR POLL'}
-                        <ArrowRight size={22} className="group-hover:translate-x-1 transition-transform" />
-                    </button>
                 </div>
             </motion.div>
         </div>
@@ -133,10 +148,20 @@ const OwnerDashboard = () => {
         const wsHost = window.location.hostname === 'localhost' ? 'localhost:5000' : window.location.host;
         const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws?pollId=${pollId}&role=owner`);
 
+        const lastMsgId = { current: null };
+
         socket.onmessage = (event) => {
             const data = JSON.parse(event.data);
             if (data.type === 'VOTE_EVENT') {
-                setPoll(prev => prev ? { ...prev, votes: data.votes, totalVotes: data.totalVotes } : prev);
+                // Duplicate Prevention: Check if we already processed this message ID
+                if (data.metadata?.id && lastMsgId.current === data.metadata.id) return;
+                lastMsgId.current = data.metadata.id;
+
+                setPoll(prev => ({
+                    ...prev,
+                    totalVotes: data.totalVotes,
+                    votes: data.votes
+                }));
                 setKafkaEvents(prev => [data.metadata, ...prev].slice(0, 6));
             }
         };
