@@ -10,6 +10,9 @@ import {
 import confetti from 'canvas-confetti';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// --- CONSTANTS ---
+const COLORS = ['#c084fc', '#f472b6', '#22d3ee', '#818cf8', '#fb7185', '#34d399'];
+
 // --- SHARED COMPONENTS ---
 const Navbar = () => (
     <nav className="border-b border-white/5 bg-[#020617]/50 backdrop-blur-xl sticky top-0 z-[100] px-6 py-4">
@@ -194,7 +197,6 @@ const OwnerDashboard = () => {
     );
 
     const chartData = Object.entries(poll.votes).map(([name, value]) => ({ name, value }));
-    const COLORS = ['#c084fc', '#f472b6', '#22d3ee', '#818cf8'];
     const voterLink = `${window.location.origin}/poll/${pollId}`;
 
     return (
@@ -321,6 +323,9 @@ const VoterPage = () => {
         const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const wsHost = window.location.hostname === 'localhost' ? 'localhost:5000' : window.location.host;
         const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws?pollId=${pollId}&role=voter`);
+
+        socket.onopen = () => console.log('✅ [LIVE-SYNC] Voter connection established');
+        socket.onclose = () => console.log('🚫 [LIVE-SYNC] Voter connection lost');
 
         socket.onmessage = (event) => {
             const data = JSON.parse(event.data);
