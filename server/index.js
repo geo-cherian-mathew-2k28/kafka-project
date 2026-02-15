@@ -200,7 +200,7 @@ app.post('/api/polls/:pollId/release', async (req, res) => {
     res.json({ success: true });
 });
 
-app.get('/:path*', (req, res) => {
+app.get(/.*/, (req, res) => {
     res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
 
